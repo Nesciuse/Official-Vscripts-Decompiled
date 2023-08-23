@@ -37,19 +37,20 @@ function AllowTakeDamage(damageTable){
 	local attacker = damageTable["Attacker"]
 	local victim = damageTable["Victim"]
 	local damageDone = damageTable["DamageDone"]
-
+	
 	// TANK ROCK
 	if(damageTable.Victim.GetClassname() == "tank_rock"){
 		if(attacker != null && attacker.IsPlayer() && attacker.GetZombieType() == 9){
 			
-			victim.ValidateScriptScope()
+			local victimScope = GetValidatedScriptScope(victim)
+
 			if(!("dealtDamage" in victim.GetScriptScope())){
-				victim.GetScriptScope()["dealtDamage"] <- damageDone
+				victimScope["dealtDamage"] <- damageDone
 			}else{
-				victim.GetScriptScope()["dealtDamage"] += damageDone
+				victimScope["dealtDamage"] += damageDone
 			}
-			if(victim.GetScriptScope()["dealtDamage"] >= 50){
-				victim.GetScriptScope()["dealtDamage"] <- -500
+			if(victimScope["dealtDamage"] >= 50){
+				victimScope["dealtDamage"] <- -500
 				if(attacker.IsIncapacitated()){
 					if(!missionFailed){
 						if(last_chance_active){
@@ -84,22 +85,20 @@ function AllowTakeDamage(damageTable){
 	}
 	
 	// DISABLE FF
-	if(attacker.IsPlayer() && victim.IsPlayer())
-	{
-		if(attacker.GetZombieType() == 9 && victim.GetZombieType() == 9)
-		{
-			if(IsPlayerABot(attacker)){ return false }
-			
-			if(damageTable.Weapon == null)
-			{
-				if(!AllowGrenadeLauncherDamage(victim))
-				{
+	if(attacker.IsPlayer()){
+		if(victim.IsPlayer()){
+			if(attacker.GetZombieType() == 9 && victim.GetZombieType() == 9){
+				if(IsPlayerABot(attacker)){
 					return false
 				}
-				else
-				{
-					damageTable.DamageDone = 1
-					return true
+				
+				if(damageTable.Weapon == null){
+					if(!AllowGrenadeLauncherDamage(victim)){
+						return false
+					}else{
+						damageTable.DamageDone = 1
+						return true
+					}
 				}
 			}
 		}

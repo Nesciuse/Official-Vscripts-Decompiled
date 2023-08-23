@@ -4,50 +4,53 @@
 //																						//
 //****************************************************************************************
 
-::rocketdude_version <- 1.3
+Msg("Activating RocketDude By ReneTM \n")
 
-::scriptDebug <- Convars.GetFloat("developer")
-
-Msg("Activating RocketDude By ReneTM \n");
-
-if ( !IsModelPrecached( "models/props_collectables/mushrooms_glowing.mdl" ) )
-	PrecacheModel( "models/props_collectables/mushrooms_glowing.mdl" )
-
-	
-IncludeScript("rocketdude/rd_utils");
-IncludeScript("rocketdude/rd_melee_getter");
-IncludeScript("rocketdude/rd_director");
-IncludeScript("rocketdude/rd_damage_controll");
-IncludeScript("rocketdude/rd_detonation_analysis");
-IncludeScript("rocketdude/rd_meds");
-IncludeScript("rocketdude/rd_events");
-IncludeScript("rocketdude/rd_last_chance");
-IncludeScript("rocketdude/rd_decals");
-IncludeScript("rocketdude/rd_map_specifics");
-IncludeScript("rocketdude/rd_custom_map_support");
+::rocketdude_version	<- "v1.7.7 build: 17:07:07 Feb 07 2021"
+::mapName				<- Director.GetMapName().tolower()
+::survivorSet			<- Director.GetSurvivorSet()
+local grenadeData = {}
 
 
 
 
-precacheAllSurvivorModels();
+// Different scripts 2 include
+// ----------------------------------------------------------------------------------------------------------------------------
 
-local grenadeData			= {}
+IncludeScript("rocketdude/rd_debug")
+IncludeScript("rocketdude/rd_utils")
+IncludeScript("rocketdude/rd_melee_getter")
+IncludeScript("rocketdude/rd_director")
+IncludeScript("rocketdude/rd_damage_controll")
+IncludeScript("rocketdude/rd_detonation_analysis")
+IncludeScript("rocketdude/rd_meds")
+IncludeScript("rocketdude/rd_events")
+IncludeScript("rocketdude/rd_last_chance")
+IncludeScript("rocketdude/rd_decals")
+IncludeScript("rocketdude/rd_map_specifics")
+IncludeScript("rocketdude/rd_custom_map_support")
+IncludeScript("rocketdude/rd_saferoom_timer")
+IncludeScript("rocketdude/rd_speedrun_mode")
+IncludeScript("rocketdude/rd_mode_description")
+IncludeScript("rocketdude/rd_hud_controller")
 
-local grenadeProperties		= {}
 
-local useNonGravityRockets	= true
-local physicsBlast			= true
-local boost_ignore_incapped	= true
-local allowBhop				= true
-local preventLandingCrack	= true
 
-L4D1SurvivorSet <- false
+
+// Precache models and sounds
+// ----------------------------------------------------------------------------------------------------------------------------
+
+precacheSurvivorModels()
+
+precacheRocketDudeModels()
+
+precacheSounds()
 
 
 
 
 // Creates a bullet time when the previous one is atleast 32 seconds ago.
-// When this condition is met bullet time will occur with a probability of 10% 
+// When this condition is met bullet time will occur with a probability of 3% 
 // ----------------------------------------------------------------------------------------------------------------------------
 
 local lastBulletTime = Time()
@@ -55,15 +58,14 @@ local lastDiceTime = Time()
 
 ::GLOBALS <-
 {
-	allowBulletTime = true
+	allowBulletTime = false
 }
 
 function bulletTime(){
-
 	if(GLOBALS.allowBulletTime){
 		if(Time() > lastBulletTime + 32){
 			if(Time() >= lastDiceTime + 2){
-				if(rollDice(5)){
+				if(rollDice(3)){
 					lastBulletTime = Time()
 					DoEntFire( "!self", "Start", "", 0, timeScaler, timeScaler )
 					DoEntFire( "!self", "Stop", "", 1, timeScaler, timeScaler )
@@ -89,34 +91,28 @@ function restoreGlobals(){
 // ----------------------------------------------------------------------------------------------------------------------------
 
 function grenadeExplodeEvent( impact ){
-	if(getSurvivorsInRange( impact ).len() > 0){
-		foreach( player in getSurvivorsInRange( impact ) ){
+	foreach( player in getSurvivorsInRange( impact ) ){
+		if(player.IsValid()){
 			doRocketJump(impact, player)
-		}	
+		}
 	}
 }
 
 
 
 
-// Returns players within the blast radius
+// Returns an array of players within the blast radius
 // ----------------------------------------------------------------------------------------------------------------------------
 
 function getSurvivorsInRange(pos){
-	local player = null;
-	local players = []
+	local player = null
 	while(player = Entities.FindByClassnameWithin(player, "player", pos, 160)){
 		if(!player.IsDead()){
-			if(boost_ignore_incapped){
-				if(!player.IsIncapacitated()){
-					players.append(player)
-				}
-			}else{
-				players.append(player)
+			if(!player.IsIncapacitated()){
+				yield player
 			}
 		}
 	}
-	return players
 }
 
 
@@ -125,20 +121,13 @@ function getSurvivorsInRange(pos){
 // Compares current position of a projectile with the previous one. Force it to explode when it got stuck on prop_dynamic
 // ----------------------------------------------------------------------------------------------------------------------------
 
-function grenadeIsStuck(pos1, pos2){
-	if((pos1 - pos2).Length() < 1){
-		return true
-	}
-	return false
-}
-
 function dynamicPropCheck(grenade){
 	if(grenade in grenadeData){
-		if(grenadeIsStuck(grenadeData[grenade], grenade.GetOrigin())){
-			if(grenade.IsValid()){
+		if(grenade.IsValid()){
+			if((grenadeData[grenade] - grenade.GetOrigin()).Length() < 1){
 				NetProps.SetPropInt(grenade, "m_takedamage", 1)
 				grenade.TakeDamage(1337, 2, null)
-			}
+			}	
 		}
 	}
 }
@@ -152,42 +141,41 @@ function dynamicPropCheck(grenade){
 function OnGameplayStart(){
 	
 	/* CREATE MUSHROOMS */
-	if(IsValveMap())
-	spawnMushrooms();
-
+	if(IsValveMap()){
+		spawnMushrooms()
+	}
+	
 	/* SPAWN MAP SIDED MUSHROOMS */
-	spawnMapSidedMushrooms();
+	spawnMapSidedMushrooms()
 	
 	/* SET PLAYERS MAX HEALTH AND CURRENT HEALTH TO 200 */
-	setPlayersHealth();
+	setPlayersHealth()
 	
 	/* GENERAL SETTINGS */
-	setNeededCvars();
-	killFixEntities();
-	EntFire("worldspawn", "RunScriptCode", "killFixEntities()", 8)
-	EntFire("worldspawn", "RunScriptCode", "killFixEntities()", 32)
+	checkCvars()
 
 	/* CREATE BULLET TIME */
-	createBulletTimerEntity();
+	createBulletTimerEntity()
 
 	/* KILL ALL DEATH CAMS */
-	removeDeathFallCameras();
+	removeDeathFallCameras()
 	
 	/* CREATE THINK TIMER */
-	createThinkTimer();
+	createThinkTimer()
 
-	/* DECIDES WHICH ROCK 2 USE */
-	L4D1SurvivorSet = IsL4D1SurvivorSet()
-	
 	/* RESTORE SETTINGS LIKE BULLET TIME 1/0 */
 	restoreGlobals()
 }
 
+::fixEntitiesRemoved <- false
+
 ::killFixEntities <- function(){
-	EntFire( "anv_mapfixes*", "Kill" );
-	EntFire( "env_player_blocker", "Kill" );
-	EntFire( "rene_relay", "Trigger" );
-	mapSpecifics();
+	if(!fixEntitiesRemoved){
+		EntFire( "anv_mapfixes*", "Kill" )
+		EntFire( "env_player_blocker", "Kill" )
+		EntFire( "rene_relay", "Trigger" )
+		fixEntitiesRemoved = true
+	}
 }
 
 
@@ -201,13 +189,12 @@ function doRocketJump(detonationPos, player){
 	local hitSurface = getSurfaceValue(detonationPos, player)
 	local ignoreDistance = 160
 	local playerEyes = player.EyePosition()
-	local finalVector = null;
+	local finalVector = null
 	
 	local detonationDistance = (detonationPos - playerEyes).Length()
 	local playerIsMidAir = NetProps.GetPropInt(player, "m_hGroundEntity") & 1
 	local midAirFactor = 0
 	local boostdirection = (detonationPos - playerEyes) * - 1
-	local currentVelocityVector = player.GetVelocity()
 	local eyeToSurface = ((detonationPos - playerEyes).Length())
 	local distanceFactor = (160 - eyeToSurface) / 10
 	
@@ -221,10 +208,10 @@ function doRocketJump(detonationPos, player){
 	if(detonationDistance <= ignoreDistance){
 		if(playerIsMidAir){
 			midAirFactor = 1
-			finalVector = (currentVelocityVector + boostdirection * midAirFactor * distanceFactor) 
+			finalVector = (player.GetVelocity() + boostdirection * midAirFactor * distanceFactor) 
 		}else{
 			midAirFactor = 0.5
-			finalVector = (currentVelocityVector + boostdirection * midAirFactor * distanceFactor)
+			finalVector = (player.GetVelocity() + boostdirection * midAirFactor * distanceFactor)
 		}
 		player.SetVelocity(finalVector)
 	}
@@ -232,43 +219,82 @@ function doRocketJump(detonationPos, player){
 
 
 
-// This listener will fire "grenadeExplodeEvent" passing the last valid position
-// of the grenade which is not existent anymore. Additionally it checks for stucked grenades
-// Disallowed the rocket boost for bots.
+
+// 1. Save current origin of projectiles
+// 2. Check if projectile is stuck to prop_dynamic
+// 3. Projectiles from bots are ignored ( just in case )
+// 4. If the player enabled auto bhop ( by using green mushroom ) use another projectile model and set it to glowing
+// 5. Get rockets which travel in a straight line
+// 6. Check for invalid rockets and fire grenadeExplodeEvent
 // ----------------------------------------------------------------------------------------------------------------------------
 
-function grenadeExplodeListener(){
-	local grenade = null;
-	while(grenade = Entities.FindByClassname(grenade, "grenade_launcher_projectile")){
-		dynamicPropCheck(grenade)
-		if(!IsPlayerABot(NetProps.GetPropEntity(grenade, "m_hThrower"))){
-			grenadeData[grenade] <- grenade.GetOrigin()
-		}
-	}
-	
-	foreach(grenade,origin in grenadeData){
-		if(!grenade.IsValid()){
-			grenadeExplodeEvent(origin)
-			grenadeData.rawdelete(grenade)
-		}
+local grenadeColor = GetColorInt(Vector(64,64,64))
+local grenadeGlowColor = GetColorInt(Vector(255,16,16))
+
+function ProjectileGenerator(){
+	local proj = null
+	while(proj = Entities.FindByClassname(proj, "grenade_launcher_projectile")){
+		yield proj
 	}
 }
 
-
-
-
-// If enabled, this will straighten the rockets so we end up with non gravity rockets like in TF2
-// ----------------------------------------------------------------------------------------------------------------------------
-
-function grenadeManipulator(){
-	local grenade = null
-	if(useNonGravityRockets){
-		while(grenade = Entities.FindByClassname(grenade, "grenade_launcher_projectile")){
-			if(!(grenade in grenadeProperties)){
-				grenadeProperties[grenade] <- grenade.GetVelocity()
+function GrenadeListener(){
+	local ent = null
+	foreach(ent in ProjectileGenerator()){
+		dynamicPropCheck(ent)
+		if(!IsPlayerABot(NetProps.GetPropEntity(ent, "m_hThrower"))){
+			grenadeData[ent] <- ent.GetOrigin()
+		}
+	
+		local scope = GetValidatedScriptScope(ent)
+	
+		// Projectile model and color
+		if(!("modelChanged" in scope)){
+			if(NetProps.GetPropEntity(ent, "m_hThrower") in bunnyPlayers){
+				ent.SetModel("models/w_models/weapons/w_rd_grenade_scale_x4_burn.mdl")
 			}else{
-				grenade.SetVelocity(grenadeProperties[grenade])
+				ent.SetModel("models/w_models/weapons/w_rd_grenade_scale_x4.mdl")
 			}
+			NetProps.SetPropInt(ent, "m_clrRender", grenadeColor)
+			scope["modelChanged"] <- true
+		}
+
+		if(!("creationTimestamp" in scope)){
+			scope["creationTimestamp"] <- Time()
+		}
+	
+		// Projectile Glow
+		if(Time() > scope["creationTimestamp"] + 0.12){
+			if(!("glowEnabled" in scope)){
+				if(NetProps.GetPropEntity(ent, "m_hThrower") in bunnyPlayers){
+					NetProps.SetPropInt(ent, "m_Glow.m_glowColorOverride", grenadeGlowColor)
+					NetProps.SetPropInt(ent, "m_Glow.m_nGlowRangeMin", 32)
+					NetProps.SetPropInt(ent, "m_Glow.m_nGlowRange", 8192)
+					NetProps.SetPropInt(ent, "m_Glow.m_iGlowType", 3)
+					NetProps.SetPropInt(ent, "m_Glow.m_bFlashing", 1)
+					scope["glowEnabled"] <- true
+				}
+			}
+		}
+		
+		// Let rockets travel in a straight line like in TF2
+		// Another method would be to change the ent´s gravity.
+		// But this would result in reflecting projectiles
+		// NetProps.SetPropFloat(nade, "m_flGravity", 0.00000001)
+		
+		if(!("first_dir_vec" in scope)){
+			scope["first_dir_vec"] <- ent.GetVelocity()
+			ent.SetVelocity(scope["first_dir_vec"])
+		}else{
+			ent.SetVelocity(scope["first_dir_vec"])
+		}
+	}
+
+	// Check if saved instances are still valid. Fire "grenadeExplodeEvent" when this is not the case anymore 
+	foreach(grenade, origin in grenadeData){
+		if(!grenade.IsValid()){
+			grenadeExplodeEvent(origin)
+			grenadeData.rawdelete(grenade)
 		}
 	}
 }
@@ -283,10 +309,9 @@ local PlayerSettingsCheckTime = Time()
 function PlayerSettings(){
 	if(Time() > PlayerSettingsCheckTime + 4){
 		foreach(player in GetSurvivors()){
-			DoEntFire("!self", "DisableLedgeHang", "", 1, player, player)
-			if(preventLandingCrack){
-				DoEntFire("!self", "ignorefalldamagewithoutreset", "10", 1, player, player)
-			}
+			DoEntFire("!self", "DisableLedgeHang", "", 0.0, player, player)
+			DoEntFire("!self", "ignorefalldamagewithoutreset", "99999", 0.0, player, player)
+			//
 			if(NetProps.GetPropInt(player, "m_iMaxHealth") != 200){
 				NetProps.SetPropInt(player, "m_iMaxHealth", 200)
 			}
@@ -306,54 +331,55 @@ function setPlayersHealth(){
 
 
 
-// Typing sv_cheats 1 on local server would result in every cheat flagged variable reset
+// While the player´s primary and secondary weapon still have infinite ammo we want to remove used items from player inventory
+// Since players are able to receive throwables from mushrooms we need to check if any survivor is standing right on a mushroom
 // ----------------------------------------------------------------------------------------------------------------------------
 
-local ServerSettingsCheckTime = Time()
-function ServerSettings(){
-	if(Time() > ServerSettingsCheckTime + 10){
-		setNeededCvars()
-		removeThrowables()
-		ServerSettingsCheckTime = Time()
+function projectileListener(){
+	local projectiles = [ "vomitjar_projectile", "molotov_projectile", "pipe_bomb_projectile" ]
+	foreach(projectile in projectiles){
+		local throwable = null
+		while(throwable = Entities.FindByClassname(throwable, projectile)){
+			if(throwable.IsValid()){
+				local scope = GetValidatedScriptScope(throwable)
+				if(!("inv_edited" in scope)){
+					local invTable = {}
+					local player = NetProps.GetPropEntity(throwable, "m_hThrower")
+					// Special case for c4m3_sugarmill_b ( mapsided projectiles which destroys stuff )
+					if(player == null || player.GetClassname() == "pipe_bomb_projectile"){
+						return
+					}
+					GetInvTable(player, invTable)
+					if("slot2" in invTable){
+						invTable.slot2.Kill()
+						scope["inv_edited"] <- true
+					}
+
+					foreach(trigger in medkit_triggers){
+						DoEntFire("!self", "TouchTest", "", 0.03, trigger, trigger)
+					}
+				}
+			}
+		}
 	}
 }
 
 
 
 
-// Remove any throwables from the map
-// ----------------------------------------------------------------------------------------------------------------------------
-
-function removeThrowables(){
-	foreach(player in GetHumanSurvivors()){
-		local invTable = {}
-		GetInvTable(player, invTable)
-		if("slot2" in invTable){
-			invTable["slot2"].Kill();
-		}
-	}
-	local throwables = ["weapon_molotov","weapon_vomitjar","weapon_pipe_bomb"]
-	foreach(item in throwables){
-		local ent = null;
-		while(ent = Entities.FindByClassname(ent, item)){
-			ent.Kill()
-		}
-	}
-}
-
-
-
-
-// Mushrooms will get reactivated every 10 seconds.
+// Check if mushrooms can be reactivated
 // ----------------------------------------------------------------------------------------------------------------------------
 
 function updateMushroomTrigger(){
-	foreach(trigger, table in medkit_data){
-		if( Time() >= table.usetime + 10){
-			if(table.usable == false){
-				table.usetime = Time() - 10
-				setMedVisibility(1, table.model)
-				table.usable = true
+	foreach(trigger in medkit_triggers){
+		
+		local scope = GetValidatedScriptScope(trigger)
+
+		if(Time() >= scope.usetime + scope.restoreTime){
+			if(scope.usable == false){
+				scope.usetime = Time() - scope.restoreTime
+				setMedVisibility(1, scope.model)
+				scope.usable = true
 				DoEntFire("!self", "TouchTest", "", 0, trigger, trigger)
 			}
 		}
@@ -363,30 +389,24 @@ function updateMushroomTrigger(){
 
 
 
-// Hold space for auto-bhop ( if enabled and player used atleast one mushroom )
+// Hold space for auto-bhop ( if player used bhop mushroom )
 // ----------------------------------------------------------------------------------------------------------------------------
 
 ::bunnyPlayers <- {}
 
 function autobhop(){
-	if(allowBhop){
-		foreach(player in GetHumanSurvivors())
-		{
-			if(player in bunnyPlayers)
-			{
-				if(!(NetProps.GetPropInt(player, "m_fFlags") & 1) && NetProps.GetPropInt(player, "movetype") == 2)
-				{
-					if(player.GetButtonMask() & 2)
-					{
-						player.OverrideFriction(0.033, 0)
-					}
-					NetProps.SetPropInt(player, "m_afButtonDisabled", NetProps.GetPropInt(player, "m_afButtonDisabled") | 2)
-				} 
-				else
-				{
-					NetProps.SetPropInt(player, "m_afButtonDisabled", NetProps.GetPropInt(player, "m_afButtonDisabled") & ~2)
+	foreach(player,ent in bunnyPlayers){
+		if(ent.IsValid()){
+			if(!(NetProps.GetPropInt(ent, "m_fFlags") & 1) && NetProps.GetPropInt(ent, "movetype") == 2){
+				if(ent.GetButtonMask() & 2){
+					ent.OverrideFriction(0.033, 0)
 				}
+				NetProps.SetPropInt(ent, "m_afButtonDisabled", NetProps.GetPropInt(ent, "m_afButtonDisabled") | 2)
+			}else{
+				NetProps.SetPropInt(ent, "m_afButtonDisabled", NetProps.GetPropInt(ent, "m_afButtonDisabled") & ~2)
 			}
+		}else{
+			bunnyPlayers.rawdelete(player)
 		}
 	}
 }
@@ -394,56 +414,6 @@ function autobhop(){
 
 
 
-// Giant grenade_launcher_projectiles with custom skin and fire attached ? There you go
-// ----------------------------------------------------------------------------------------------------------------------------
-
-local grenadeColor = GetColorInt(Vector(64,64,64))
-local grenadeGlowColor = GetColorInt(Vector(255,16,16))
-
-if(!IsModelPrecached("models/w_models/weapons/w_rd_grenade_scale_x4_burn.mdl")){
-	PrecacheModel("models/w_models/weapons/w_rd_grenade_scale_x4_burn.mdl")
-}
-
-if(!IsModelPrecached("models/w_models/weapons/w_rd_grenade_scale_x4.mdl")){
-	PrecacheModel("models/w_models/weapons/w_rd_grenade_scale_x4.mdl")
-}
-
-function grenadeCustomizer(){
-	local nade = null;
-	while(nade = Entities.FindByClassname(nade, "grenade_launcher_projectile")){
-		nade.ValidateScriptScope()
-		local scope = nade.GetScriptScope()
-		
-		// Change projectile model and color
-		if(!("modelChanged" in scope)){
-			if(NetProps.GetPropEntity(nade, "m_hThrower") in bunnyPlayers){
-				nade.SetModel("models/w_models/weapons/w_rd_grenade_scale_x4_burn.mdl")
-			}else{
-				nade.SetModel("models/w_models/weapons/w_rd_grenade_scale_x4.mdl")
-			}
-			NetProps.SetPropInt(nade, "m_clrRender", grenadeColor)
-			scope["modelChanged"] <- true
-		}
-		
-		if(!("creationTimestamp" in scope)){
-			scope["creationTimestamp"] <- Time()
-		}
-		
-		// Enable glows for projectile when the m_hThrower used a mushroom already
-		if(Time() > scope["creationTimestamp"] + 0.12){
-			if(!("glowEnabled" in scope)){
-				if(NetProps.GetPropEntity(nade, "m_hThrower") in bunnyPlayers){
-					NetProps.SetPropInt(nade, "m_Glow.m_glowColorOverride", grenadeGlowColor)
-					NetProps.SetPropInt(nade, "m_Glow.m_nGlowRangeMin", 32)
-					NetProps.SetPropInt(nade, "m_Glow.m_nGlowRange", 8192)
-					NetProps.SetPropInt(nade, "m_Glow.m_iGlowType", 3)
-					NetProps.SetPropInt(nade, "m_Glow.m_bFlashing", 1)
-					scope["glowEnabled"] <- true
-				}
-			}
-		}
-	}	
-}
 
 
 
@@ -452,19 +422,18 @@ function grenadeCustomizer(){
 // ----------------------------------------------------------------------------------------------------------------------------
 
 function Think(){
-	grenadeExplodeListener()
-	grenadeManipulator()
+	checkCvars()
+	GrenadeListener()
 	PlayerSettings()
-	ServerSettings()
+	projectileListener()
 	updateMushroomTrigger()
 	autobhop()
-	playerOnGroundCounter()
-	survivorSaferoomCheck()
+	PlayerFunctions()
 	lastChanceCountDown()
-	grenadeCustomizer()
-	setTankRockModel()
-	lastChanceRockListener()
+	tankrockListener()
+	safeRoomTimer()
 }
 
+	
 
 

@@ -11,7 +11,6 @@
 // ----------------------------------------------------------------------------------------------------------------------------
 
 ::placeRocketDudeDecals <- function(){
-	local mapName = Director.GetMapName()
 	local texture = "decals/rocketdude/rd_logo_glow"
 	
 	if(mapName in RocketDudeDecals){
@@ -113,6 +112,5 @@
 
 	c14m1_junkyard 		= [ Vector(-3616.64,-9215.38,165.2) ]
 	c14m2_lighthouse	= [ Vector(340.733,-240.909,394.865) ] 
-
 
 }

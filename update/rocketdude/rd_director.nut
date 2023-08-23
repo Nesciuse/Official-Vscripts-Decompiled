@@ -4,15 +4,18 @@
 //																						//
 //****************************************************************************************
 
+
+
+
 MutationOptions <-
-{	
+{
 	// General
 	cm_NoSurvivorBots	= 1
 	
 	// Special Infected
 	MaxSpecials			= 6
 
-	// convert items
+	// Convert items
 	weaponsToConvert =
 	{
 		weapon_first_aid_kit =	"weapon_pain_pills_spawn"
@@ -20,12 +23,13 @@ MutationOptions <-
 
 	function ConvertWeaponSpawn(classname){
 		if (classname in weaponsToConvert){
-			return weaponsToConvert[classname];
+			return weaponsToConvert[classname]
 		}
-		return 0;
+		return 0
 	}	
 	
-
+	
+	// Controll which weapons are allowed to be spawned
 	weaponsToPreserve =
 	{
 		weapon_pain_pills		= 0
@@ -34,6 +38,7 @@ MutationOptions <-
 		weapon_first_aid_kit	= 0
 		weapon_gascan			= 0
 		weapon_pistol_magnum	= 0
+		weapon_grenade_launcher = 0
 	}
 
 	function AllowWeaponSpawn(classname){
@@ -49,57 +54,22 @@ MutationOptions <-
 		return false;
 	}
 	
+	// Avoid fallen survivors carrying items
 	function AllowFallenSurvivorItem(item){
 		return false
 	}
-
-
-
-	DefaultItems = [
+	
+	// Get default items for survivors
+	DefaultItems =
+	[
 		"weapon_grenade_launcher",
 		RandomInt(0, 1) ? getAvailableMelee("Sharp") : "weapon_pistol_magnum"
 	]
 
 	function GetDefaultItem( idx ){
 		if ( idx < DefaultItems.len() ){
-			return DefaultItems[idx];
+			return DefaultItems[idx]
 		}
-		return 0;
+		return 0
 	}
 }
-
-
-
-
-// The right man in the wrong place can make all the difference in the world
-// ----------------------------------------------------------------------------------------------------------------------------
-
-::allowPropPickup <- function(){
-	
-	local player = null;
-	local playerInv = {};
-	
-	while(player = Entities.FindByClassname(player, "player")){
-		if(player.GetZombieType() == 9 && !IsPlayerABot(player)){
-			if(player.GetPlayerName() == "Dr. Gordon Freeman"){
-				 GetInvTable(player, playerInv)
-				if("slot1" in playerInv){
-					if(NetProps.GetPropString(playerInv.slot1, "m_strMapSetScriptName") == "crowbar"){
-						return true;
-					}
-				}
-			}
-		}
-	}
-	return false;
-}
-
-
-function g_ModeScript::CanPickupObject(object){
-	if(allowPropPickup()){
-		return true
-	}
-	return false;
-}
-
-
