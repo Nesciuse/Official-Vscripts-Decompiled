@@ -120,6 +120,7 @@ class RThen {
 		assert( typeof(_target) == "string" )
 		target = _target
 		assert( typeof(_concept) == "string" )
+		concept = _concept
 		delay = _delay.tofloat()
 		
 		// in rr2 "concept" is just another fact in the query
@@ -133,7 +134,7 @@ class RThen {
 		}
 		addcontexts = clone _contexts
 		
-		addcontexts.concept <- _concept
+		//addcontexts.concept <- _concept
 		func = execute.bindenv(this)
 	}
 	
@@ -172,9 +173,19 @@ class RThen {
 		}
 		
 		// merge addcontexts into query
-		foreach (k,v in addcontexts)
+		/*foreach (k,v in addcontexts)
 		{
 			query[k] <- v
+		}*/
+		
+		local criteria = ""
+		// merge addcontexts into criteria string
+		foreach (k,v in addcontexts)
+		{
+			if ( criteria == "" )
+				criteria = criteria + k + ":" + v
+			else
+				criteria = criteria + "," + k + ":" + v
 		}
 		
 		if ( target.tolower() == "all" )
@@ -183,7 +194,8 @@ class RThen {
 			// attempt dispatch to all listeners
 			foreach (name, recipient in expressers)
 			{
-				DoEntFire( "!self", "SpeakResponseConcept", query.concept, delay, null, recipient )
+				if ( recipient != speaker )
+					QueueSpeak( recipient, concept, 0.0, criteria )
 				/*local q = rr_QueryBestResponse( recipient, query )
 				if ( q )
 				{
@@ -193,7 +205,18 @@ class RThen {
 		}
 		else if ( target.tolower() == "any" )
 		{
-			EntFire( "info_director", "FireConceptToAny", query.concept, delay )
+			local expressers = ::rr_GetResponseTargets()
+			local results = []
+			foreach (name, recipient in expressers)
+			{
+				if ( recipient == speaker )
+					continue
+				if ( !recipient.IsDying() && !recipient.IsDead() )
+					results.push( recipient )
+			}
+			local l = results.len()
+			if ( l > 0 )
+				QueueSpeak( results[RandomInt(0, l - 1)], concept, 0.0, criteria )
 			/*local expressers = ::rr_GetResponseTargets()
 			// test the query against each listener and only play the best match
 			local results = []
@@ -222,7 +245,7 @@ class RThen {
 		}
 		else if ( target.tolower() == "self" )
 		{
-			DoEntFire( "!self", "SpeakResponseConcept", query.concept, delay, null, speaker )
+			QueueSpeak( speaker, concept, 0.0, criteria )
 			/*local q = rr_QueryBestResponse( speaker, query )
 			if ( q )
 				rr_CommitAIResponse( speaker, q )*/
@@ -231,24 +254,26 @@ class RThen {
 		{
 			local expressers = ::rr_GetResponseTargets()
 			if ( query.subject in expressers )
-				DoEntFire( "!self", "SpeakResponseConcept", query.concept, delay, null, expressers[query.subject] )
+				QueueSpeak( expressers[query.subject], concept, 0.0, criteria )
 		}
 		else if ( target.tolower() == "from" )
 		{
 			local expressers = ::rr_GetResponseTargets()
 			if ( query.from in expressers )
-				DoEntFire( "!self", "SpeakResponseConcept", query.concept, delay, null, expressers[query.from] )
+				QueueSpeak( expressers[query.from], concept, 0.0, criteria )
 		}
 		else if ( target.tolower() == "orator" )
 		{
-			EntFire( "func_orator", "SpeakResponseConcept", query.concept, 0 )
+			local orator = Entities.FindByClassname( null, "func_orator" )
+			if ( orator )
+				QueueSpeak( orator, concept, 0.0, criteria )
 		}
 		else
 		{	
 			local expressers = ::rr_GetResponseTargets()
 			if ( target in expressers )
 			{
-				DoEntFire( "!self", "SpeakResponseConcept", query.concept, delay, null, expressers[target] )
+				QueueSpeak( expressers[target], concept, 0.0, criteria )
 				/*local q = rr_QueryBestResponse( expressers[target], query )
 				if ( q )
 				{
@@ -257,17 +282,29 @@ class RThen {
 			}
 			else
 			{
+				local orator = null
+				while ( orator = Entities.FindByClassname( orator, "func_orator" ) )
+				{
+					if ( orator.IsValid() )
+					{
+						if ( orator.GetName().tolower() == target.tolower() )
+						{
+							QueueSpeak( orator, concept, 0.0, criteria )
+							return;
+						}
+					}
+				}
 				printl("RRscript warning: couldn't find target " + target )
 			}
 		}
-		
 	}
 
 	// properties
 	target = null; // this will be one of "any", "all", "coach", etc. I think in the future this wants to be a function?
 	addcontexts = null; // a table of {k1:v1, k2:v2} additional facts that will be added to the following query. concept is always present here, from the constructor.
-	delay = null; // delay as passed to the code followup class 	
+	delay = null; // delay as passed to the code followup class
 	func = null; // what gets called when the followup triggers
+	concept = null; // concept is always present here, from the constructor.
 	
 	function _tostring()
 	{
@@ -341,6 +378,8 @@ function rr_ProcessCriterion( crit )
 
 function rr_PlaySoundFile( speaker, query, soundfile, context, contexttoworld, volume, func )
 {
+	if ( !IsSoundPrecached( soundfile ) )
+		PrecacheSound( soundfile )
 	EmitAmbientSoundOn( soundfile, volume, 350, 100, speaker )
 	if ( func )
 		func( speaker, query )
@@ -363,35 +402,33 @@ function rr_ApplyContext( speaker, query, contextData, contexttoworld, func )
 	{
 		if ( ( "context" in contextData ) && ( typeof contextData.context != "table" ) )
 		{
+			local duration = contextData.duration
+			if ( duration == 0 )
+				duration = -1
 			if ( contexttoworld )
 			{
 				local world = Entities.FindByClassname( null, "worldspawn" )
 				if ( world )
-					world.SetContext( contextData.context, contextData.value.tostring(), contextData.duration )
+					world.SetContext( contextData.context, contextData.value.tostring(), duration )
 			}
 			else
-			{
-				local duration = contextData.duration
-				if ( duration == 0 )
-					duration = -1
 				speaker.SetContext( contextData.context, contextData.value.tostring(), duration )
-			}
 		}
 		else
 		{
 			foreach( contexts in contextData )
 			{
+				local duration = contexts.duration
+				if ( duration == 0 )
+					duration = -1
 				if ( contexttoworld )
 				{
 					local world = Entities.FindByClassname( null, "worldspawn" )
 					if ( world )
-						world.SetContext( contexts.context, contexts.value.tostring(), contexts.duration )
+						world.SetContext( contexts.context, contexts.value.tostring(), duration )
 				}
 				else
 				{
-					local duration = contexts.duration
-					if ( duration == 0 )
-						duration = -1
 					speaker.SetContext( contexts.context, contexts.value.tostring(), duration )
 				}
 			}

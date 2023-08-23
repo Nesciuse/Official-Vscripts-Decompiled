@@ -117,8 +117,8 @@ function enableLastChanceVision(){
 	local witch = null
 	local rock = null
 	
-	while(player = Entities.FindByClassname(player,"player")){
-		if(player.GetZombieType != 9 && !player.IsDead() && !player.IsDying()){
+	while(player = Entities.FindByClassname(player, "player")){
+		if(player.GetZombieType() != 9 && !player.IsDead() && !player.IsDying()){
 			NetProps.SetPropInt(player, "m_Glow.m_iGlowType", 3)
 			setInfectedGlowColor(player)
 		}
@@ -190,7 +190,7 @@ function disableInfectedGlows(){
 // ----------------------------------------------------------------------------------------------------------------------------
 
 function whiteScreen(){
-	foreach(player in GetSurvivors()){
+	foreach(player in GetHumanSurvivors()){
 		ScreenFade(player, 200, 200, 200, 255, 1, 0.5, 1)
 	}
 }
@@ -222,11 +222,23 @@ function setInfectedGlowColor(inf){
 // Returns vector color as int
 // ----------------------------------------------------------------------------------------------------------------------------
 
-function GetColorInt(vector){
-	local color = vector.x
-	color += 256 * vector.y
-	color += 65536 * vector.z
-	return color
+function GetColorInt(col){
+	
+	if(typeof(col) == "Vector"){
+		local color = col.x
+		color += 256 * col.y
+		color += 65536 * col.z
+		return color
+	}else if(typeof(col) == "string"){
+		local colorArray = split(col, " ")
+		local r = colorArray[0].tointeger()
+		local g = colorArray[1].tointeger()
+		local b = colorArray[2].tointeger()
+		local color = r
+		color += 256 * g
+		color += 65536 * b
+		return color
+	}
 }
 
 

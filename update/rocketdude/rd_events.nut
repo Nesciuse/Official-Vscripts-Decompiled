@@ -7,58 +7,74 @@
 
 
 
+::devs <- {}
+	
+devs["STEAM_1:0:26359107"] <- { name = "ReneTM", role = "creator" }
+devs["STEAM_1:0:16327272"] <- { name = "Derdoron", role = "Beta Tester" }
+
+
+
+
 // Chat commands
 // ----------------------------------------------------------------------------------------------------------------------------
 
 function OnGameEvent_player_say(params){
 
-	local text = strip(params["text"].tolower())
-	local ent = GetPlayerFromUserID(params["userid"])
-	ent.ValidateScriptScope()
-	local scope = ent.GetScriptScope()
+	local text,ent = null
 	
+	if("userid" in params && params.userid == 0){
+		return
+	}
+	
+	text = strip(params["text"].tolower())
+	ent = GetPlayerFromUserID(params["userid"])
+
 	if(text.len() < 1){
 		return
 	}
 	
-	switch(text){
-		// Mark player as somebody who wants to enable slow-motion and check if everybody else wants that also
-		case "!disableslomo" :
-		if(GLOBALS.allowBulletTime){
-			scope["no_slomo"] <- true
-			
-			foreach(player in GetHumanSurvivors()){
-				player.ValidateScriptScope()
-				local playerscope = player.GetScriptScope()
-				
-				if( !("no_slomo" in playerscope) || playerscope["no_slomo"] == false ){
-					return;
-				}
-			}
-			GLOBALS.allowBulletTime <- false;
-			saveGlobals()
-			ClientPrint(null, 5, BLUE + "Slow motion effect has been disabled.")
-		}
-		break;
+	local steamID = ent.GetNetworkIDString()
+	local scope = GetValidatedScriptScope(ent)
 
-		// Mark player as somebody who wants to disable slow-motion and check if everybody else wants that also
-		case "!enableslomo" :
-		if(!GLOBALS.allowBulletTime){
-			scope["no_slomo"] <- false
-		
-			foreach(player in GetHumanSurvivors()){
-				player.ValidateScriptScope()
-				local playerscope = player.GetScriptScope()
-				
-				if( !("no_slomo" in playerscope) || playerscope["no_slomo"] == true ){
-					return;
-				}
-			}
-			GLOBALS.allowBulletTime <- true;
-			saveGlobals()
-			ClientPrint(null, 5, BLUE + "Slow motion effect has been enabled.")
+	switch(text){
+
+		case "!version" :
+		if(steamID in devs){
+			ClientPrint(null, 5, BLUE + "RocketDude " + rocketdude_version)
 		}
-		break;
+		break
+		
+		case "!countdown" :
+		startSafeRoomTimer(ent)
+		break
+		
+		case "!r" :
+		restartFromSaferoom(ent)
+		break
+		
+		case "!saveangles" :
+		savePlayerEyeAngles(ent)
+		break
+		
+		case "!speedrunmode" :
+		speedrunModeToggle(ent)
+		break
+		
+		case "!hud" :
+		ChangeHudState(ent)
+		break
+		
+		case "!stats" :
+		outputStats(ent)
+		break
+		
+		case "!info" :
+		printMutationInfo(ent)
+		break
+		
+		case "!g2mushroom" :
+		GoToNextMushroom(ent)
+		break
 	}
 }
 
@@ -66,12 +82,14 @@ function OnGameEvent_player_say(params){
 
 
 function OnGameEvent_player_first_spawn(params){
+	
+	local orangestar = ORANGE + "★"
+
 	if(params["isbot"] == 0){
 		local player = GetPlayerFromUserID(params.userid)
-		if(player.GetNetworkIDString() == "STEAM_1:0:26359107"){
-			
-			local orangestar = ORANGE + "★"
-			ClientPrint(null, 5, orangestar + GREEN + " RocketDude creator " + BLUE + player.GetPlayerName() + WHITE + " joined the game.")
+		local steamID = player.GetNetworkIDString()
+
+		if(steamID in devs){
 			local invTable = {}
 			GetInvTable(player, invTable)
 			if("slot1" in invTable && invTable.slot1.GetClassname() == "weapon_melee"){
@@ -82,12 +100,16 @@ function OnGameEvent_player_first_spawn(params){
 					NetProps.SetPropInt(invTable.slot1, "m_nSkin", 1)
 				}
 			}
+			ClientPrint(null, 5, orangestar + GREEN + " RocketDude " + devs[steamID].role + BLUE + " " + player.GetPlayerName() + WHITE + " joined the game.")
 		}
 	}
 }
 
 
 
+
+// "The right man in the wrong place can make all the difference in the world"
+// ----------------------------------------------------------------------------------------------------------------------------
 
 function OnGameEvent_player_changename(params){
 	local player = GetPlayerFromUserID(params["userid"])
@@ -113,6 +135,13 @@ function OnGameEvent_player_spawn(params){
 	if(player.GetZombieType() == 9 && !IsPlayerABot(player)){
 		placeRocketDudeDecals()
 		teleportToSurvivor(player)
+		
+		DoEntFire("!self", "DisableLedgeHang", "", 0.0, player, player)
+		DoEntFire("!self", "ignorefalldamagewithoutreset", "99999", 0.0, player, player)
+
+		if(NetProps.GetPropInt(player, "m_iMaxHealth") != 200){
+			NetProps.SetPropInt(player, "m_iMaxHealth", 200)
+		}
 	}
 }
 
@@ -143,6 +172,13 @@ function teleportToSurvivor(player){
 
 
 function OnGameEvent_player_incapacitated(params){
+	
+	if("attackerentid" in params){
+		if(EntIndexToHScript(params.attackerentid).GetClassname() == "trigger_hurt"){
+			return
+		}
+	}
+
 	if(!lastChanceUsed){
 		lastChanceSwitch(params)
 	}
@@ -157,7 +193,7 @@ function OnGameEvent_player_incapacitated(params){
 
 function OnGameEvent_player_hurt(params){
 	if(GetPlayerFromUserID(params.userid).GetZombieType() == 9){
-		foreach(trigger, datatable in medkit_data){
+		foreach(trigger in medkit_triggers){
 			DoEntFire("!self", "TouchTest", "", 0, trigger, trigger)
 		}
 	}
@@ -170,7 +206,7 @@ function OnGameEvent_player_hurt(params){
 // ----------------------------------------------------------------------------------------------------------------------------
 
 function OnGameEvent_mission_lost(params){
-	disableInfectedGlows();
+	disableInfectedGlows()
 }
 
 
@@ -206,8 +242,8 @@ function OnGameEvent_player_death(params){
 	
 
 	if(victim.GetClassname() != "infected"){
-		if(victim.GetClassname() == "witch" || victim.GetZombieType() != 9){
-			if(attacker != null && attacker.IsPlayer()){
+		if(victim.GetClassname() == "witch" || victim.GetZombieType() != 9){	// Killed witch or any Special infected or tank
+			if(attacker != null && attacker.IsPlayer()){						// Dont do anything when the map is the killer
 				if(attacker.GetZombieType() == 9){
 					if(attacker.IsIncapacitated()){
 						if(!missionFailed){
@@ -221,7 +257,7 @@ function OnGameEvent_player_death(params){
 									ClientPrint(null, 5, BLUE + "Time to say goodbye")
 								}
 							}
-							EmitAmbientSoundOn("player/orch_hit_csharp_short", 1, 100, 100, attacker);	
+							EmitAmbientSoundOn("player/orch_hit_csharp_short", 1, 100, 100, attacker)
 						}
 					}
 				}
@@ -242,19 +278,43 @@ function OnGameEvent_player_death(params){
 
 function OnGameEvent_tank_spawn(params){
 	local tank = EntIndexToHScript(params.tankid)
-	local health = 0;
+	local health = 0
 	switch(Convars.GetStr("z_difficulty").tolower()){
 		case "easy" :
-			health = 7000; break;
+			health = 8000;	break
 		case "normal" :
-			health = 14000; break;
+			health = 16000;	break
 		case "hard" :
-			health = 28000; break;
+			health = 32000;	break
 		case "impossible" :
-			health = 56000; break;
+			health = 64000;	break
 	}
-	tank.SetMaxHealth(health);
-	tank.SetHealth(health);
+	tank.SetMaxHealth(health)
+	tank.SetHealth(health)
+}
+
+
+
+
+// Set witch health in relation to the current difficulty
+// ----------------------------------------------------------------------------------------------------------------------------
+
+function OnGameEvent_witch_spawn(params){
+	local witch = EntIndexToHScript(params.witchid)
+	local health = 0
+	
+	switch(Convars.GetStr("z_difficulty").tolower()){
+		case "easy" :
+			health = 2048;	break
+		case "normal" :
+			health = 4096;	break
+		case "hard" :
+			health = 8192;	break
+		case "impossible" :
+			health = 16384; break
+	}
+	witch.SetMaxHealth(health)
+	witch.SetHealth(health)
 }
 
 
@@ -266,12 +326,21 @@ function OnGameEvent_tank_spawn(params){
 function OnGameEvent_item_pickup(params){
 	local player = GetPlayerFromUserID(params["userid"])
 	local playerInv = {}
-	if(player.GetZombieType() == 9){
+	if(player.GetZombieType() == 9 && !IsPlayerABot(player)){
 		GetInvTable(player, playerInv)
 		if("slot0" in playerInv){
 			if(playerInv["slot0"].GetClassname() != "weapon_grenade_launcher"){
 				playerInv["slot0"].Kill()
 				player.GiveItem("weapon_grenade_launcher")
+			}
+		}
+		
+		// Gives devs a golden crowbar
+		if(player.GetNetworkIDString() in devs){
+			if("slot1" in playerInv){
+				if(NetProps.GetPropString(playerInv.slot1, "m_strMapSetScriptName") == "crowbar"){
+					NetProps.SetPropInt(playerInv.slot1, "m_nSkin", 1)
+				}
 			}
 		}
 	}
@@ -285,6 +354,41 @@ function OnGameEvent_weapon_drop(params){
 		local droppedItem = EntIndexToHScript(params.propid)
 		if(droppedItem.GetClassname() == "weapon_grenade_launcher"){
 			droppedItem.Kill()
+		}
+	}
+}
+
+::entityChangesDone <- false
+
+function OnGameEvent_player_left_checkpoint(params){
+	if("userid" in params){
+		local player = GetPlayerFromUserID(params["userid"])
+		if(player.GetZombieType() == 9 && !IsPlayerABot(player) && !player.IsDead()){
+			if(player in PlayerTimeData){
+				if(!PlayerTimeData[player].finished){
+					PlayerTimeData[player].timerActive = true
+					PlayerTimeData[player].startTime = Time()
+					PlayerTimeData[player].seconds = 0
+					PlayerTimeData[player].ticks = 0
+					EmitAmbientSoundOn("ui/beep07.wav", 0.5, 100, 107, player)
+					ClientPrint(player, 5, BLUE + player.GetPlayerName() + " | 00:00")
+				}
+			}
+		
+			if(!IsPlayerABot(player)){
+				if(!entityChangesDone){
+					DoEntFire("worldspawn", "RunScriptCode", "killFixEntities()", 2, player, player)
+					DoEntFire("worldspawn", "RunScriptCode", "mapSpecifics()", 4, player, player)
+					entityChangesDone = true
+				}
+			}
+
+			DoEntFire("!self", "DisableLedgeHang", "", 0.0, player, player)
+			DoEntFire("!self", "ignorefalldamagewithoutreset", "99999", 0.0, player, player)
+
+			if(NetProps.GetPropInt(player, "m_iMaxHealth") != 200){
+				NetProps.SetPropInt(player, "m_iMaxHealth", 200)
+			}
 		}
 	}
 }
@@ -311,12 +415,12 @@ function OnGameEvent_finale_win(param){
 
 
 function finalGroundTimeOutput(){
-	foreach(player,datatable in playerOnGroundData){
+	foreach(player,datatable in PlayerTimeData){
 		if(player.IsValid()){
 			if(!player.IsDead() && !player.IsDying() && !player.IsIncapacitated()){
-				if(playerOnGroundData[player].finish == false){
+				if(!PlayerTimeData[player].finished){
 					printFinalGroundTime(player)
-					playerOnGroundData[player].finish = true;
+					ProcessSurvivorTime(player)
 				}
 			}
 		}
@@ -326,48 +430,49 @@ function finalGroundTimeOutput(){
 
 
 
-local lastSaveRoomCheck = Time()
-function survivorSaferoomCheck(){
-	if( Time() > lastSaveRoomCheck + 0.03){
-		lastSaveRoomCheck = Time()
-		foreach(player, datatable in playerOnGroundData){
-			if(playerOnGroundData[player].finish == false){
-				if( ResponseCriteria.GetValue(player, "incheckpoint" ) == "1" ){
-					printFinalGroundTime(player)
-					playerOnGroundData[player].finish = true;
-				}
-			}
+function ProcessSurvivorTime(ent){
+	
+	local tTable = PlayerTimeData[ent]
+	tTable.endTime = Time()
+	
+	if(tTable.time_best == 0){
+		tTable.time_best = tTable.endTime - tTable.startTime
+	}else{
+		if((tTable.endTime - tTable.startTime) < tTable.time_best){
+			tTable.time_best = (tTable.endTime - tTable.startTime)
 		}
 	}
+	tTable.finished = true
 }
 
 
 
 
-::printFinalGroundTime <- function(player){
-	local mapName = Director.GetMapName().tolower()
-	if(!player.IsDead() && !player.IsDying() && !player.IsIncapacitated()){
-		local sec = playerOnGroundData[player].seconds
-		local fracs = playerOnGroundData[player].ticks.tofloat()
+::printFinalGroundTime <- function(ent){
+	if(!ent.IsDead() && !ent.IsDying() && !ent.IsIncapacitated()){
+		local sec = PlayerTimeData[ent].seconds
+		local fracs = PlayerTimeData[ent].ticks.tofloat()
 		if(fracs > 0){
 			fracs = (fracs / 30)
 		}
 		local groundTime = sec + fracs
-		local timeNeeded = limitDecimalPlaces( Time() - (playerOnGroundData[player].startTime).tofloat() )
-		local midAirPercent = getMidAirPercentage(groundTime, timeNeeded)
-		ClientPrint(null, 5, BLUE + player.GetPlayerName() + WHITE + " finished this map in " + BLUE + timeNeeded + WHITE + " seconds and spent " + BLUE + midAirPercent + WHITE + " % midair")
+		local time_curr = limitDecimalPlaces( Time() - (PlayerTimeData[ent].startTime).tofloat() )
+		local midAirPercent = getMidAirPercentage(groundTime, time_curr)
 		
-		local diff = GetSpeedrunStats(player, timeNeeded)
+		ClientPrint(null, 5, BLUE + ent.GetPlayerName() + WHITE + " finished this map in " + BLUE + time_curr + WHITE + " seconds and spent " + BLUE + midAirPercent + WHITE + " % midair")
+		EmitAmbientSoundOn("ui/menu_invalid.wav", 0.75, 100, 110, ent)
+		
+		local diff = GetSpeedrunStats(ent, time_curr)
 
 		// Speedrun tracker
 		
 		if( diff != null ){
 			if( diff < 0){
 				ClientPrint(null, 5, WHITE + "Thats a new personal record for " + mapName + GREEN + " ( "  + diff.tostring() + " seconds )")
-				return;
+				return
 			}else if(diff > 0){
 				ClientPrint(null, 5, ORANGE + "( +" + ( diff.tostring()) + " seconds )" )
-				return;
+				return
 			}
 		}
 	}
@@ -376,9 +481,9 @@ function survivorSaferoomCheck(){
 
 
 
-::getMidAirPercentage <- function(groundTime, timeNeeded){
-	local airTime = timeNeeded - groundTime
-	local airPercentage = (( airTime / timeNeeded ) * 100).tofloat()
+::getMidAirPercentage <- function(groundTime, time_curr){
+	local airTime = time_curr - groundTime
+	local airPercentage = (( airTime / time_curr ) * 100).tofloat()
 	return limitDecimalPlaces(airPercentage)
 }
 
@@ -396,22 +501,22 @@ function survivorSaferoomCheck(){
 // ----------------------------------------------------------------------------------------------------------------------------
 
 ::isNumeric <- function(value){
-	local newValue;
+	local newValue
 	local dots = 0
 	local numbers = ["0","1","2","3","4","5","6","7","8","9","."]
 	for(local i=0; i < value.len(); i++){
 		local checkChar = value.slice(i, i+1)
 		if(checkChar == "."){
-			dots++;
+			dots++
 		}
 		if(dots > 1){
 			return false
 		}
 		if(numbers.find(checkChar) == null){
-			return false;
+			return false
 		}
 	}
-	return true;
+	return true
 }
 
 
@@ -424,10 +529,9 @@ function survivorSaferoomCheck(){
 	
 	// Restrict saving for the local player
 	if(!(player == GetListenServerHost())){
-		return null;
+		return null
 	}
 	
-	local mapName = Director.GetMapName().tolower()
 	local filePath = "rocketdude/speedrun/"
 	local fileName = mapName + ".txt"
 	
@@ -436,13 +540,13 @@ function survivorSaferoomCheck(){
 	// Save a file when there is none
 	if(savedTime == null || savedTime.len() == 0 || !isNumeric(savedTime)){
 		StringToFile(filePath + fileName, newTime.tostring() )
-		return null;
+		return null
 	}
 	
 	try{
 		savedTime = savedTime.tofloat()
 	}catch(exception){
-		return null;
+		return null
 	}
 	
 	if(newTime < savedTime){
@@ -450,6 +554,21 @@ function survivorSaferoomCheck(){
 	}
 	
 	return (newTime - savedTime)
+}
+
+
+
+
+// Typing sv_cheats 1 on local server would result in every cheat flagged variable reset
+// ----------------------------------------------------------------------------------------------------------------------------
+
+function OnGameEvent_server_cvar(param){
+	if("cvarname" in param){
+		local cvar = param.cvarname
+		if(cvar == "sv_cheats"){
+			checkCvars()
+		}
+	}
 }
 
 

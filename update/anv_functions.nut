@@ -1430,7 +1430,7 @@ function patch_spawninfront( strOrigin, strMins, strMaxs )
 		{
 			OnStartTouch =
 			{
-				cmd1 = "!selfRunScriptCodeg_MapScript.LocalScript.DirectorOptions.PreferredMobDirection = -101"
+				cmd1 = "!selfRunScriptCodeg_MapScript.LocalScript.DirectorOptions.PreferredMobDirection <- -101"
 			}
 		}
 	} );

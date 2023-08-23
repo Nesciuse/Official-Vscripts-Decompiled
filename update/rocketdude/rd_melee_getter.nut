@@ -44,8 +44,8 @@ function GiveMelee(player, melee){
 	if(sharps.find(melee) != null || blunts.find(melee) != null){
 		player.GiveItem(melee)
 	}else{
-		ClientPrint(null,5, "The " + melee + " is not available on current map.")
-		ClientPrint(null,5, "Take one of those: " + meleeAliases)
+		ClientPrint(null, 5, "The " + melee + " is not available on current map.")
+		ClientPrint(null, 5, "Take one of those: " + meleeAliases)
 	}
 }
 
@@ -59,7 +59,7 @@ function getAvailableMeleeAliases(){
 	}
 		foreach(dataSet in bluntMeleeData){
 		if(IsModelPrecached(dataSet.model)){
-			aliases+=dataSet.alias + ", "
+			aliases += dataSet.alias + ", "
 		}
 	}
 	return aliases;
@@ -95,11 +95,10 @@ function getAvailableMelee(attribute){
 	local sharps = GetAvailableSharpMelees()
 	local blunts = GetAvailableBluntMelees()
 	local melee = null;
-	if(sharps.len() != 0 && blunts.len() != 0){
+	if(sharps.len() > 0 && blunts.len() > 0){
 		if(attribute == "Sharp"){
-		melee = sharps[RandomInt(0, sharps.len() - 1)]
-		}
-		else{
+			melee = sharps[RandomInt(0, sharps.len() - 1)]
+		}else{
 			melee = blunts[RandomInt(0, blunts.len() - 1)]
 		}
 		return melee;
