@@ -15,7 +15,7 @@ function EntFire( target, action, value = null, delay = 0.0, activator = null )
 	{
 		value = "";
 	}
-	
+
 	local caller = null;
 	if ( "self" in this )
 	{
@@ -25,8 +25,8 @@ function EntFire( target, action, value = null, delay = 0.0, activator = null )
 			activator = self;
 		}
 	}
-	
-	DoEntFire( target.tostring(), action.tostring(), value.tostring(), delay, activator, caller ); 
+
+	DoEntFire( target.tostring(), action.tostring(), value.tostring(), delay, activator, caller );
 }
 
 function __ReplaceClosures( script, scope )
@@ -35,11 +35,11 @@ function __ReplaceClosures( script, scope )
 	{
 		scope = getroottable();
 	}
-	
+
 	local tempParent = { getroottable = function() { return null; } };
 	local temp = { runscript = script };
 	temp.setdelegate( tempParent );
-	
+
 	temp.runscript()
 	foreach( key,val in temp )
 	{
@@ -88,7 +88,7 @@ function __DumpScope( depth, table )
 			print("   ");
 		}
 	}
-	
+
     foreach(key, value in table)
     {
 		indent(depth);
@@ -96,37 +96,32 @@ function __DumpScope( depth, table )
         switch (type(value))
         {
             case "table":
-				print("(TABLE)\
-");
+				print("(TABLE)\n");
 				indent(depth);
-                print("{\
-");
+                print("{\n");
                 __DumpScope( depth + 1, value);
 				indent(depth);
                 print("}");
                 break;
             case "array":
-				print("(ARRAY)\
-");
+				print("(ARRAY)\n");
 				indent(depth);
-                print("[\
-")
+                print("[\n")
                 __DumpScope( depth + 1, value);
 				indent(depth);
                 print("]");
                 break;
             case "string":
-                print(" = \\"");
+                print(" = \"");
                 print(value);
-                print("\\"");
+                print("\"");
                 break;
             default:
                 print(" = ");
                 print(value);
                 break;
         }
-        print("\
-");  
+        print("\n");
 	}
 }
 
@@ -144,8 +139,7 @@ function __CollectEventCallbacks( scope, prefix, globalTableName, regFunc )
 {
 	if ( !(typeof( scope ) == "table" ) )
 	{
-		print( "__CollectEventCallbacks[" + prefix +"]: NOT TABLE! : " + typeof ( scope ) + "\
-" );
+		print( "__CollectEventCallbacks[" + prefix +"]: NOT TABLE! : " + typeof ( scope ) + "\n" );
 		return;
 	}
 
@@ -153,14 +147,14 @@ function __CollectEventCallbacks( scope, prefix, globalTableName, regFunc )
 	{
 		getroottable()[globalTableName] <- {};
 	}
-	local useTable = getroottable()[globalTableName] 
+	local useTable = getroottable()[globalTableName]
 	foreach( key,value in scope )
 	{
 		if ( typeof( value ) == "function" )
 		{
 			if ( typeof( key ) == "string" && key.find( prefix, 0 ) == 0 )
 			{
-				local eventName = key.slice( prefix.len() ); 
+				local eventName = key.slice( prefix.len() );
 				if ( eventName.len() > 0 )
 				{
 					// First time we've seen this event: Make an array for callbacks and
@@ -180,7 +174,7 @@ function __CollectEventCallbacks( scope, prefix, globalTableName, regFunc )
 				}
 			}
 		}
-	}	
+	}
 }
 
 function __CollectGameEventCallbacks( scope )
@@ -194,12 +188,11 @@ function __CollectGameEventCallbacks( scope )
 //---------------------------------------------------------
 function __RunEventCallbacks( event, params, prefix, globalTableName, bWarnIfMissing )
 {
-	local useTable = getroottable()[globalTableName] 
+	local useTable = getroottable()[globalTableName]
 	if ( !(event in useTable) )
 	{
 		if (bWarnIfMissing)
-		    print( "__RunEventCallbacks[" + prefix + "]: Invalid 'event' name: " + event + ". No listeners registered for that event.\
-" );
+		    print( "__RunEventCallbacks[" + prefix + "]: Invalid 'event' name: " + event + ". No listeners registered for that event.\n" );
 		return;
 	}
 
@@ -293,21 +286,21 @@ function ScriptDebugDrawWatches( line )
 	local ignored
 	local bRedoExpand
 	local changed
-	
+
 	for ( local i = 0; i < ScriptDebugWatches.len(); i++ )
 	{
 		curWatchKey = ScriptDebugWatches[i].key;
 		curWatchColor = ScriptDebugWatches[i].color;
-		
+
 		if ( typeof( curWatchKey ) == "function" )
 		{
-			curWatchString = "" 
+			curWatchString = ""
 		}
 		else
 		{
 			curWatchString = curWatchKey + ": "
 		}
-		
+
 		try
 		{
 			local watchResult = ScriptDebugWatches[i].func.pcall(::getroottable())
@@ -323,9 +316,9 @@ function ScriptDebugDrawWatches( line )
 					}
 					ScriptDebugWatches[i].lastValue = watchResult
 				}
-				
+
 				curWatchString = curWatchString + watchResult.tostring() + ScriptDebugWatches[i].lastChangeText
-				if ( changed) 
+				if ( changed)
 				{
 					ScriptDebugTextPrint( curWatchString, [ 0, 255, 0 ], true );
 				}
@@ -339,10 +332,10 @@ function ScriptDebugDrawWatches( line )
 		{
 			curWatchString = curWatchString + "Watch failed - " + error.tostring()
 		}
-		
+
 		DebugDrawScreenTextLine( 0.5, 0.0, line++, curWatchString, curWatchColor[0], curWatchColor[1], curWatchColor[2], 255, NDEBUG_PERSIST_TILL_NEXT_SERVER );
 	}
-	
+
 	return line
 }
 
@@ -360,7 +353,7 @@ function ScriptDebugAddWatch( watch )
 			watch = { key = watch, func = watch, color = ScriptDebugDefaultWatchColor, lastValue = null, lastChangeText = "" }
 			break;
 		}
-		
+
 	case "string":
 		{
 			local closure
@@ -370,7 +363,7 @@ function ScriptDebugAddWatch( watch )
 			}
 			catch ( error )
 			{
-				ScriptDebugTextPrint( "Failed to add watch \\"" + watch + "\\": " + error.tostring() )
+				ScriptDebugTextPrint( "Failed to add watch \"" + watch + "\": " + error.tostring() )
 				return
 			}
 			watch = { key = watch, func = closure, color = ScriptDebugDefaultWatchColor, lastValue = null, lastChangeText = "" }
@@ -391,7 +384,7 @@ function ScriptDebugAddWatch( watch )
 		}
 		return -1
 	}
-	
+
 	local iExisting
 	if ( ( iExisting = FindExisting( watch ) ) == -1 )
 	{
@@ -460,7 +453,7 @@ function ScriptDebugAddWatchPattern( name )
 		Msg( "Cannot find an empty string" )
 		return;
 	}
-	
+
 	local function OnKey( keyPath, key, value )
 	{
 		if ( keyPath.find( "Documentation." ) != 0 )
@@ -468,7 +461,7 @@ function ScriptDebugAddWatchPattern( name )
 			ScriptDebugAddWatch( keyPath );
 		}
 	}
-	
+
 	ScriptDebugIterateKeys( name, OnKey );
 }
 
@@ -481,12 +474,12 @@ function ScriptDebugRemoveWatchPattern( name )
 		Msg( "Cannot find an empty string" )
 		return;
 	}
-	
+
 	local function OnKey( keyPath, key, value )
 	{
-		ScriptDebugRemoveWatch( keyPath ); 
+		ScriptDebugRemoveWatch( keyPath );
 	}
-	
+
 	ScriptDebugIterateKeys( name, OnKey );
 }
 
@@ -544,7 +537,7 @@ function ScriptDebugTextTrace( text, color = [ 255, 255, 255 ] )
 			}
 		}
 	}
-	
+
 	if ( bPrint )
 	{
 		ScriptDebugTextPrint( text, color )
@@ -563,7 +556,7 @@ function ScriptDebugTextPrint( text, color = [ 255, 255, 255 ], isWatch = false 
 		}
 	}
 
-	local timeString = format( "(%0.2f) ", Time() ) 
+	local timeString = format( "(%0.2f) ", Time() )
 
 	if ( ScriptDebugDrawTextEnabled || ( isWatch && ScriptDebugDrawWatchesEnabled ) )
 	{
@@ -573,7 +566,7 @@ function ScriptDebugTextPrint( text, color = [ 255, 255, 255 ], isWatch = false 
 		{
 			indentString = indentString + "   "
 		}
-		
+
 		// Screen overlay
 		local debugString = timeString + indentString + text.tostring()
 		ScriptDebugText.append( [ Time(), debugString.tostring(), color ] )
@@ -582,7 +575,7 @@ function ScriptDebugTextPrint( text, color = [ 255, 255, 255 ], isWatch = false 
 			ScriptDebugText.remove( 0 )
 		}
 	}
-	
+
 	// Console
 	printl( text + " " + timeString );
 }
@@ -616,11 +609,11 @@ function ScriptDebugTextDraw( line )
 			{
 				alpha = 255
 			}
-			
+
 			DebugDrawScreenTextLine( 0.5, 0.0, line++, ScriptDebugText[i][1], ScriptDebugText[i][2][0], ScriptDebugText[i][2][1], ScriptDebugText[i][2][2], alpha, NDEBUG_PERSIST_TILL_NEXT_SERVER );
 		}
 	}
-	
+
 	return line + ScriptDebugTextLines - i;
 }
 
@@ -661,7 +654,7 @@ function ScriptDebugHook( type, file, line, funcname )
 				return;
 			}
 		}
-		
+
 		if ( type == 'c' )
 		{
 			local indentString = "";
@@ -670,15 +663,15 @@ function ScriptDebugHook( type, file, line, funcname )
 			{
 				indentString = indentString + "   "
 			}
-			
+
 			// Screen overlay
-			local timeString = format( "(%0.2f) ", Time() ) 
+			local timeString = format( "(%0.2f) ", Time() )
 			local debugString = timeString + indentString + functionString
 			ScriptDebugTextPrint( functionString );
 			ScriptDebugTextIndent++;
-			
+
 			// Console
-			printl( "{" ); 
+			printl( "{" );
 			print_indent++;
 		}
 		else
@@ -686,7 +679,7 @@ function ScriptDebugHook( type, file, line, funcname )
 			ScriptDebugTextIndent--;
 			print_indent--;
 			printl( "}" );
-			
+
 			if ( ScriptDebugTextIndent == 0 )
 			{
 				ScriptDebugExpandWatches()
@@ -699,7 +692,7 @@ function ScriptDebugHook( type, file, line, funcname )
 
 function __VScriptServerDebugHook( type, file, line, funcname )
 {
-	ScriptDebugHook( type, file, line, funcname ) // route to support debug script reloading during development 
+	ScriptDebugHook( type, file, line, funcname ) // route to support debug script reloading during development
 }
 
 function BeginScriptDebug()
