@@ -33,7 +33,6 @@ MutationOptions <-
 	MobMaxSize = 0
 	NoMobSpawns = true
 	EscapeSpawnTanks = false
-	WaterSlowsMovement = false
 
 	// convert items that aren't useful
 	weaponsToConvert =
@@ -63,19 +62,6 @@ MutationOptions <-
 		}
 		return 0;
 	}
-
-	function EndScriptedMode()
-	{
-		for ( local player; player = Entities.FindByClassname( player, "player" ); )
-		{
-			if ( NetProps.GetPropInt( player, "m_iTeamNum" ) != 2 || IsPlayerABot( player ) )
-				continue;
-
-			if ( player.GetPlayerUserId() in SessionState.IsAutoReviving )
-				return -1;
-		}
-		return 1; // SCENARIO_SURVIVORS_DEAD
-	}
 }
 
 MutationState <-
@@ -84,7 +70,6 @@ MutationState <-
 	TankModels = [ "models/infected/hulk.mdl", "models/infected/hulk_dlc3.mdl", "models/infected/hulk_l4d1.mdl" ]
 	ModelCheck = false
 	FinaleStarted = false
-	FinaleStartTime = 0
 	TriggerRescue = false
 	RescueDelay = 600
 	LastAlarmTankTime = 0
@@ -92,7 +77,6 @@ MutationState <-
 	SpawnInterval = 20
 	DoubleTanks = false
 	TankBiled = {}
-	TanksAlive = 0
 	TanksDisabled = false
 	TankHealth = 4000
 	BileHurtTankThink = false
@@ -101,8 +85,13 @@ MutationState <-
 	LeftSafeAreaThink = false
 	CheckPrimaryWeaponThink = false
 	FinaleType = -1
-	AutoRevive = true
-	IsAutoReviving = {}
+}
+
+function GetNumTanks()
+{
+	local infStats = {};
+	GetInfectedStats( infStats );
+	return infStats.Tanks;
 }
 
 if ( IsMissionFinalMap() )
@@ -113,14 +102,14 @@ if ( IsMissionFinalMap() )
 		MutationState.FinaleType = NetProps.GetPropInt( triggerFinale, "m_type" );
 		if ( NetProps.GetPropInt( triggerFinale, "m_bIsSacrificeFinale" ) )
 		{
-			triggerFinale.ValidateScriptScope();
-			local finaleScope = triggerFinale.GetScriptScope();
-			finaleScope.InputSacrificeEscapeFailed <- function()
+			function OnGameEvent_generator_started( params )
 			{
-				if ( SessionState.IsAutoReviving.len() > 0 )
-					return false;
+				if ( !SessionState.FinaleStarted )
+					return;
 
-				return true;
+				HUDManageTimers( 0, TIMER_COUNTDOWN, HUDReadTimer( 0 ) - 30 );
+				if ( GetNumTanks() < SessionOptions.cm_TankLimit )
+					ZSpawn( { type = 8 } );
 			}
 		}
 	}
@@ -145,7 +134,6 @@ if ( IsMissionFinalMap() )
 			if ( SessionState.TriggerRescue )
 			{
 				SessionOptions.ScriptedStageType = STAGE_ESCAPE;
-				TankRunHUD.Fields.rescue_time.flags = TankRunHUD.Fields.rescue_time.flags | HUD_FLAG_NOTVISIBLE;
 				return;
 			}
 			if ( SessionState.FinaleStarted )
@@ -168,14 +156,13 @@ if ( IsMissionFinalMap() )
 		if ( SessionState.FinaleType == 4 )
 			return;
 
+		HUDManageTimers( 0, TIMER_COUNTDOWN, SessionState.RescueDelay );
+		TankRunHUD.Fields.rescue_time.flags = TankRunHUD.Fields.rescue_time.flags & ~HUD_FLAG_NOTVISIBLE;
+
 		SessionState.DoubleTanks = true;
 		SessionState.SpawnInterval = 40;
 		SessionState.FinaleStarted = true;
-		SessionState.FinaleStartTime = Time();
 		SessionState.TriggerRescueThink = true;
-
-		HUDManageTimers( 0, TIMER_COUNTDOWN, SessionState.RescueDelay );
-		TankRunHUD.Fields.rescue_time.flags = TankRunHUD.Fields.rescue_time.flags & ~HUD_FLAG_NOTVISIBLE;
 	}
 
 	function OnGameEvent_gauntlet_finale_start( params )
@@ -191,7 +178,6 @@ if ( IsMissionFinalMap() )
 	function OnGameEvent_finale_vehicle_leaving( params )
 	{
 		SessionState.SpawnTankThink = false;
-		SessionState.AutoRevive = false;
 	}
 }
 
@@ -223,11 +209,14 @@ function AllowTakeDamage( damageTable )
 
 function TriggerRescueThink()
 {
-	if ( (Time() - SessionState.FinaleStartTime) >= SessionState.RescueDelay )
+	if ( HUDReadTimer( 0 ) <= 0 )
 	{
 		SessionState.TriggerRescue = true;
-		Director.ForceNextStage();
 		SessionState.TriggerRescueThink = false;
+		Director.ForceNextStage();
+
+		TankRunHUD.Fields.rescue_time.flags = TankRunHUD.Fields.rescue_time.flags | HUD_FLAG_NOTVISIBLE;
+		HUDManageTimers( 0, TIMER_DISABLE, 0 );
 	}
 }
 
@@ -236,7 +225,7 @@ function SpawnTankThink()
 	if ( SessionOptions.cm_TankLimit == 0 )
 		return;
 
-	if ( (SessionState.TanksAlive < SessionOptions.cm_TankLimit) && ((Time() - SessionState.LastSpawnTime) >= SessionState.SpawnInterval || SessionState.LastSpawnTime == 0) )
+	if ( (GetNumTanks() < SessionOptions.cm_TankLimit) && ((Time() - SessionState.LastSpawnTime) >= SessionState.SpawnInterval || SessionState.LastSpawnTime == 0) )
 	{
 		if ( ZSpawn( { type = 8 } ) )
 		{
@@ -364,6 +353,7 @@ function OnGameEvent_round_start_post_nav( params )
 	}
 
 	CheckDifficultyForTankHealth( GetDifficulty() );
+	EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.TankRunThink()" );
 }
 
 function OnGameEvent_difficulty_changed( params )
@@ -389,142 +379,23 @@ function OnGameEvent_player_left_safe_area( params )
 		SessionState.SpawnTankThink = true;
 }
 
-function AutoRevive( userid )
-{
-	local player = GetPlayerFromUserID( userid );
-	if ( (!player) || (!player.IsSurvivor()) || (!player.IsIncapacitated() && !player.IsHangingFromLedge()) )
-		return;
-
-	if ( !(userid in SessionState.IsAutoReviving) || NetProps.GetPropFloat( player, "m_flProgressBarDuration" ) == 0 )
-	{
-		local time = Time();
-		local reviveDuration = Convars.GetFloat( "survivor_revive_duration" );
-
-		NetProps.SetPropEntity( player, "m_reviveOwner", player );
-		NetProps.SetPropFloat( player, "m_flProgressBarStartTime", time );
-		NetProps.SetPropFloat( player, "m_flProgressBarDuration", reviveDuration );
-		SessionState.IsAutoReviving.rawset( userid, { starttime = time, duration = reviveDuration } );
-	}
-
-	if ( Time() - NetProps.GetPropFloat( player, "m_flProgressBarStartTime" ) >= NetProps.GetPropFloat( player, "m_flProgressBarDuration" ) )
-	{
-		player.ReviveFromIncap();
-		return;
-	}
-	EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.AutoRevive(" + userid + ")", 0.1 );
-}
-
-function InheritAutoRevive( userid, otherid )
-{
-	local player = GetPlayerFromUserID( userid );
-	if ( (!player) || (!player.IsSurvivor()) || !(otherid in SessionState.IsAutoReviving) )
-		return;
-
-	NetProps.SetPropEntity( player, "m_reviveOwner", player );
-	NetProps.SetPropFloat( player, "m_flProgressBarStartTime", SessionState.IsAutoReviving[otherid].starttime );
-	NetProps.SetPropFloat( player, "m_flProgressBarDuration", SessionState.IsAutoReviving[otherid].duration );
-	SessionState.IsAutoReviving.rawset( userid, SessionState.IsAutoReviving[otherid] );
-	SessionState.IsAutoReviving.rawdelete( otherid );
-	EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.AutoRevive(" + userid + ")" );
-}
-
-function OnGameEvent_player_incapacitated( params )
-{
-	if ( !SessionState.AutoRevive )
-		return;
-
-	local player = GetPlayerFromUserID( params["userid"] );
-	if ( (!player) || (!player.IsSurvivor()) )
-		return;
-
-	EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.AutoRevive(" + params["userid"] + ")" );
-}
-
-function OnGameEvent_player_ledge_grab( params )
-{
-	if ( !SessionState.AutoRevive )
-		return;
-
-	local player = GetPlayerFromUserID( params["userid"] );
-	if ( (!player) || (!player.IsSurvivor()) )
-		return;
-
-	EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.AutoRevive(" + params["userid"] + ")" );
-}
-
-function OnGameEvent_revive_success( params )
-{
-	local player = GetPlayerFromUserID( params["subject"] );
-	if ( (!player) || (!player.IsSurvivor()) )
-		return;
-
-	if ( params["subject"] in SessionState.IsAutoReviving )
-		SessionState.IsAutoReviving.rawdelete( params["subject"] );
-}
-
-function OnGameEvent_player_death( params )
-{
-	local player = GetPlayerFromUserID( params["userid"] );
-	if ( (!player) || (!player.IsSurvivor()) )
-		return;
-
-	if ( params["userid"] in SessionState.IsAutoReviving )
-		SessionState.IsAutoReviving.rawdelete( params["userid"] );
-}
-
-function OnGameEvent_player_bot_replace( params )
-{
-	if ( !SessionState.AutoRevive )
-		return;
-
-	local player = GetPlayerFromUserID( params["player"] );
-	local bot = GetPlayerFromUserID( params["bot"] );
-	if ( (!player) || (!player.IsSurvivor()) || (!bot) || (!bot.IsSurvivor()) )
-		return;
-
-	if ( params["player"] in SessionState.IsAutoReviving )
-		EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.InheritAutoRevive(" + params["bot"] + "," + params["player"] + ")" );
-}
-
-function OnGameEvent_bot_player_replace( params )
-{
-	if ( !SessionState.AutoRevive )
-		return;
-
-	local player = GetPlayerFromUserID( params["player"] );
-	if ( (!player) || (!player.IsSurvivor()) )
-		return;
-
-	if ( params["bot"] in SessionState.IsAutoReviving )
-		EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.InheritAutoRevive(" + params["player"] + "," + params["bot"] + ")" );
-}
-
 function OnGameEvent_player_disconnect( params )
 {
 	local player = GetPlayerFromUserID( params["userid"] );
 	if ( !player )
 		return;
 
-	if ( player.IsSurvivor() )
+	if ( player.GetZombieType() == 8 && player in SessionState.TankBiled )
 	{
-		if ( params["userid"] in SessionState.IsAutoReviving )
-			SessionState.IsAutoReviving.rawdelete( params["userid"] );
-	}
-	else
-	{
-		if ( player.GetZombieType() == 8 && player in SessionState.TankBiled )
-		{
-			SessionState.TankBiled.rawdelete( player );
-			if ( SessionState.TankBiled.len() == 0 )
-				SessionState.BileHurtTankThink = false;
-		}
+		SessionState.TankBiled.rawdelete( player );
+		if ( SessionState.TankBiled.len() == 0 )
+			SessionState.BileHurtTankThink = false;
 	}
 }
 
 function OnGameEvent_mission_lost( params )
 {
 	SessionState.SpawnTankThink = false;
-	SessionState.AutoRevive = false;
 }
 
 function OnGameEvent_player_now_it( params )
@@ -565,7 +436,7 @@ function OnGameEvent_player_no_longer_it( params )
 
 function OnGameEvent_triggered_car_alarm( params )
 {
-	if ( (SessionState.TanksAlive < SessionOptions.cm_TankLimit) && ((Time() - SessionState.LastAlarmTankTime) >= SessionState.SpawnInterval || SessionState.LastAlarmTankTime == 0) )
+	if ( (GetNumTanks() < SessionOptions.cm_TankLimit) && ((Time() - SessionState.LastAlarmTankTime) >= SessionState.SpawnInterval || SessionState.LastAlarmTankTime == 0) )
 	{
 		if ( ZSpawn( { type = 8 } ) )
 			SessionState.LastAlarmTankTime = Time();
@@ -578,7 +449,6 @@ function OnGameEvent_tank_spawn( params )
 	if ( !tank )
 		return;
 
-	SessionState.TanksAlive++;
 	tank.SetMaxHealth( SessionState.TankHealth );
 	tank.SetHealth( SessionState.TankHealth );
 	local modelName = tank.GetModelName();
@@ -613,8 +483,6 @@ function OnGameEvent_tank_spawn( params )
 
 function OnGameEvent_tank_killed( params )
 {
-	SessionState.TanksAlive--;
-
 	local tank = GetPlayerFromUserID( params["userid"] );
 
 	if ( tank in SessionState.TankBiled )
@@ -625,13 +493,10 @@ function OnGameEvent_tank_killed( params )
 	}
 
 	if ( SessionState.FinaleStarted )
-	{
-		SessionState.RescueDelay -= 10;
 		HUDManageTimers( 0, TIMER_COUNTDOWN, HUDReadTimer( 0 ) - 10 );
-	}
 }
 
-function Update()
+function TankRunThink()
 {
 	if ( SessionState.LeftSafeAreaThink )
 		LeftSafeAreaThink();
@@ -651,33 +516,5 @@ function Update()
 		for ( local infected; infected = Entities.FindByClassname( infected, "infected" ); )
 			infected.Kill();
 	}
+	EntFire( "worldspawn", "RunScriptCode", "g_ModeScript.TankRunThink()", 1.0 );
 }
-
-local tankrun_rules =
-[
-	{
-		name = "RevivedByFriendOverride",
-		criteria = [ [ "Concept", "RevivedByFriend" ] ],
-		responses = [ { scenename = "" } ],
-		group_params = g_rr.RGroupParams({ permitrepeats = true })
-	},
-	{
-		name = "PlayerIncapacitatedOverride",
-		criteria = [ [ "Concept", "PlayerIncapacitated" ] ],
-		responses = [ { scenename = "" } ],
-		group_params = g_rr.RGroupParams({ permitrepeats = true })
-	},
-	{
-		name = "PlayerHelpOverride",
-		criteria = [ [ "Concept", "PlayerHelp" ] ],
-		responses = [ { scenename = "" } ],
-		group_params = g_rr.RGroupParams({ permitrepeats = true })
-	},
-	{
-		name = "PlayerLedgeHangStartOverride",
-		criteria = [ [ "Concept", "PlayerLedgeHangStart" ] ],
-		responses = [ { scenename = "" } ],
-		group_params = g_rr.RGroupParams({ permitrepeats = true })
-	}
-]
-g_rr.rr_ProcessRules( tankrun_rules );
